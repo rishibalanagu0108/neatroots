@@ -30,6 +30,22 @@ export interface OfflineOptions {
   only?: string[];
 }
 
+/** Loads the checks available to an offline command without starting a server. */
+export function listOfflineChecks(opts: { dirs?: string[] } = {}): { checks: ReturnType<CheckRegistry["all"]>; errors: string[] } {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "neatroots-check-list-"));
+  const store = new Store(dir);
+  try {
+    const registry = new CheckRegistry(store, path.join(rootsHome(), "checks"), () => opts.dirs ?? []);
+    return {
+      checks: registry.all(),
+      errors: registry.errors.map((e) => `${e.path}: ${e.message.split("\n")[0]}`),
+    };
+  } finally {
+    store.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 /** Runs every rule check over saved traces, with no server and no model. Question checks are skipped. */
 export function checkFiles(files: string[], opts: OfflineOptions = {}): { runs: OfflineRun[]; rules: string[]; errors: string[] } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "neatroots-check-"));

@@ -17,7 +17,8 @@ import { registerCloudImportCommands, registerDataCommands } from "./cli/data.js
 import { connectClient, findClient, listClients, serverCommand, CLIENTS } from "./mcp/clients.js";
 import { parseChecks } from "./checks/registry.js";
 import { checkWarnings } from "./checks/lint.js";
-import { checkFiles } from "./checks/offline.js";
+import { checkFiles, listOfflineChecks } from "./checks/offline.js";
+import { isQuestion } from "./checks/types.js";
 import { hardwareTier } from "./models/llm.js";
 import { setCloudKey, deleteCloudKey, getCloudKey, getCloudToken } from "./relay/keychain.js";
 import { LAYA_DOWNLOAD_MB } from "./models/laya.js";
@@ -425,7 +426,19 @@ const checks = program.command("checks").description("List and validate checks")
 checks
   .command("list")
   .option("-p, --port <port>")
-  .action(async (opts) => {
+  .option("--offline", "list checks without starting neatroots")
+  .option("--checks <dir...>", "extra checks folders to include offline")
+  .action(async (opts: { port?: string; offline?: boolean; checks?: string[] }) => {
+    if (opts.offline) {
+      const r = listOfflineChecks({ dirs: opts.checks });
+      for (const c of r.checks) {
+        const title = c.check.title ?? (isQuestion(c.check) ? c.check.ask : c.check.id);
+        console.log(`${c.check.enabled === false ? "○" : "●"} ${c.check.id.padEnd(32)} ${c.check.kind.padEnd(7)} ${c.source.padEnd(8)} ${title}`);
+      }
+      for (const e of r.errors) console.log(`✗ ${e}`);
+      if (r.errors.length) process.exitCode = 2;
+      return;
+    }
     const p = port(opts.port);
     const r = await api<any>(p, "/api/checks");
     for (const c of r.checks) {

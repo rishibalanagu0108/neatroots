@@ -308,8 +308,10 @@ export class Engine {
     }
     const fresh = u.spans.filter((s) => s.isNew && !s.view.isMarker);
     if (fresh.length) this.track(u.traceId, this.handleSpans(run, fresh.map((s) => s.row.span_id)));
-    if (!reopened && (u.rootEnded || u.completed)) {
+    if (!reopened && (u.rootEnded || u.completed || (run.ended && fresh.length > 0))) {
       run.ended = true;
+      // A late span can change an end-only rule's answer, so schedule a fresh end pass.
+      run.endHandled = false;
       // Trailing spans can arrive in the next batch; give them a moment.
       clearTimeout(run.endTimer);
       run.endTimer = setTimeout(() => void this.track(u.traceId, this.handleEnd(run)), 400);
@@ -483,7 +485,7 @@ export class Engine {
           this.roots.bus.emit("finding", f);
           if (status === "raised") this.onFindingRaised(run, f, lc, hit.params, snap);
         }
-      } else if (open && hit && !hit.firing) {
+      } else if (open && ((hit && !hit.firing) || (atEnd && !hit && (rule.rule.type === "run_end" || rule.rule.type === "unrecovered_error")))) {
         // A streak that ended still happened, so its halt stands. A requires_before whose earlier
         // call arrived late never happened at all, so its halt is withdrawn too.
         this.resolve(open, { keepHalts: rule.rule.type !== "requires_before" });

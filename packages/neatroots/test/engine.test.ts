@@ -50,6 +50,24 @@ describe("engine", () => {
     expect(tb.roots.store.notesForTrace(t)).toEqual([]);
   });
 
+  it("resolves an end-only finding after a late successful retry", async () => {
+    const { tb } = await setup();
+    const t = hex(16);
+    const root = hex(8);
+    tb.roots.ingest([
+      batch([
+        llmSpan(t, root, { system: "You are a refund agent.", user: "Refund order 4512", out: "I handled it." }),
+        toolSpan(t, root, "issue_refund", '{"order_id":"4512"}', undefined, "payment gateway timeout"),
+        span({ traceId: t, spanId: root, name: "refund", kind: "workflow", attrs: [s("neatlogs.workflow.output", "Your refund is complete.")] }),
+      ]),
+    ]);
+    const finding = await until(() => tb.roots.store.findingsForTrace(t).find((x) => x.check_id === "unrecovered-tool-failure"), 5000);
+    expect(finding.status).toBe("raised");
+    tb.roots.ingest([batch([toolSpan(t, root, "issue_refund", '{"order_id":"4512"}', '{"refunded":42}')])]);
+    await until(() => tb.roots.store.getFinding(finding.id)?.status === "resolved", 5000);
+    expect(tb.roots.store.getFinding(finding.id)?.status).toBe("resolved");
+  });
+
   it("does not re-raise a dismissed finding during the same run", async () => {
     const { tb } = await setup();
     const { t, root } = startRun(tb);
